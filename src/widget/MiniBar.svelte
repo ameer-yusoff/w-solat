@@ -1,0 +1,144 @@
+<script>
+  import { ICON } from '../lib/icons.js';
+  import { fmtTime, fmtCountdown } from '../lib/prayer.js';
+  import { settings } from '../lib/store.svelte.js';
+
+  let { next, progress = 0, remaining = 0, period, expanded = false, status = 'loading', onclick } = $props();
+
+  const C = 2 * Math.PI * 15.5;
+  const urgent = $derived(next && remaining > 0 && remaining <= 10 * 60000);
+
+  let flip = $state(false);
+  $effect(() => {
+    const t = setInterval(() => (flip = !flip), 4000);
+    return () => clearInterval(t);
+  });
+  const showCountdown = $derived(urgent || flip);
+
+  const title = $derived(
+    status === 'error' && !next ? 'Luar Talian' : status === 'loading' && !next ? 'Memuatkan' : next?.name ?? '—',
+  );
+</script>
+
+<button class="mini gold-frame" class:expanded class:urgent {onclick} title="W-Solat — klik untuk jadual">
+  <span class="glow"></span>
+  <span class="pattern"></span>
+
+  <span class="ring">
+    <svg viewBox="0 0 36 36" aria-hidden="true">
+      <circle class="track" cx="18" cy="18" r="15.5" />
+      <circle
+        class="bar"
+        cx="18"
+        cy="18"
+        r="15.5"
+        stroke-dasharray={C}
+        stroke-dashoffset={C * (1 - progress)}
+      />
+    </svg>
+    <span class="ic">{@html ICON[period] ?? ICON.isyak}</span>
+  </span>
+
+  <span class="txt">
+    <span class="name">{title}</span>
+    <span class="ticker">
+      <span class="track" style:transform="translateY({showCountdown ? -15 : 0}px)">
+        <span class="num">{next ? fmtTime(next.time, settings.format24) : '--:--'}</span>
+        <span class="num cd">−{fmtCountdown(remaining)}</span>
+      </span>
+    </span>
+  </span>
+
+  {#if next}<span class="ar mini-ar">{next.ar}</span>{/if}
+
+  {#if status === 'offline' || status === 'error'}
+    <span class="offline" title="Data luar talian (cache)">{@html ICON.wifiOff}</span>
+  {/if}
+</button>
+
+<style>
+  .mini {
+    position: absolute;
+    left: 0;
+    right: 0;
+    margin: 0 auto;
+    bottom: 4px;
+    width: 204px;
+    height: 40px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 10px 0 5px;
+    overflow: hidden;
+    background:
+      linear-gradient(105deg, color-mix(in srgb, var(--sky-2) 85%, transparent), color-mix(in srgb, var(--sky-1) 92%, transparent) 70%),
+      rgba(12, 14, 18, 0.88);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: transform 0.25s var(--spring), box-shadow 0.25s ease, background 1.2s ease;
+    text-align: left;
+  }
+  .mini:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(233, 200, 115, 0.12);
+  }
+  .mini:active { transform: scale(0.97); transition-duration: 0.08s; }
+  .mini.expanded { box-shadow: 0 0 0 1px rgba(233, 200, 115, 0.25), 0 6px 18px rgba(0, 0, 0, 0.55); }
+
+  .pattern {
+    position: absolute;
+    inset: 0;
+    background-image: var(--pattern);
+    background-size: 22px 22px;
+    opacity: 0.08;
+    mask-image: linear-gradient(90deg, transparent 20%, #000 100%);
+    pointer-events: none;
+  }
+  .glow {
+    position: absolute;
+    left: -10px;
+    top: 50%;
+    width: 60px;
+    height: 60px;
+    transform: translateY(-50%);
+    background: radial-gradient(circle, color-mix(in srgb, var(--accent) 35%, transparent), transparent 70%);
+    pointer-events: none;
+  }
+
+  .ring {
+    position: relative;
+    flex: none;
+    width: 31px;
+    height: 31px;
+    display: grid;
+    place-items: center;
+  }
+  .ring svg { position: absolute; inset: 0; transform: rotate(-90deg); }
+  .ring circle { fill: none; stroke-width: 2.2; }
+  .ring .track { stroke: rgba(255, 255, 255, 0.1); }
+  .ring .bar {
+    stroke: var(--gold);
+    stroke-linecap: round;
+    transition: stroke-dashoffset 1s linear;
+    filter: drop-shadow(0 0 2px rgba(233, 200, 115, 0.6));
+  }
+  .ic { width: 15px; height: 15px; color: var(--accent); display: grid; }
+  .ic :global(svg) { width: 100%; height: 100%; }
+
+  .txt { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .name { font-family: var(--font-display); font-weight: 650; font-size: 13px; letter-spacing: 0.2px; white-space: nowrap; }
+  .mini-ar { position: relative; flex: none; font-size: 17px; line-height: 1; color: var(--gold); opacity: 0.92; padding: 0 2px; display: flex; align-items: center; }
+  .ticker { height: 15px; overflow: hidden; display: block; }
+  .ticker .track { display: flex; flex-direction: column; transition: transform 0.5s var(--ease); }
+  .ticker .num { height: 15px; line-height: 15px; font-size: 11.5px; color: var(--ink-dim); }
+  .ticker .cd { color: var(--gold-soft); }
+
+  .offline { position: relative; width: 12px; height: 12px; color: #f59e0b; display: grid; }
+  .offline :global(svg) { width: 100%; height: 100%; }
+
+  .urgent .ring .bar { stroke: var(--accent); animation: pulse 1.6s ease-in-out infinite; }
+  .urgent .ticker .cd { color: var(--accent); font-weight: 600; }
+  @keyframes pulse {
+    50% { filter: drop-shadow(0 0 6px var(--accent)); }
+  }
+</style>
