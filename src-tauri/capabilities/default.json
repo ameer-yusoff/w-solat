@@ -1,0 +1,10 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Kebenaran asas W-Solat untuk tetingkap utama dan notifikasi",
+  "windows": ["main", "notify"],
+  "permissions": [
+    "core:default",
+    "core:event:default"
+  ]
+}
