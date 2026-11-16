@@ -13,6 +13,15 @@ use winreg::RegKey;
 const RUN_KEY_PATH: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
 const AUTOSTART_NAME: &str = "W-Solat Widget";
 
+#[tauri::command]
+fn open_azan_credit() -> Result<(), String> {
+    std::process::Command::new("explorer.exe")
+        .arg("https://music.youtube.com/playlist?list=OLAK5uy_ldnXdmREHvQ-lQ8eZf4FLtRfSgk4L7mso")
+        .spawn()
+        .map(|_| ())
+        .map_err(|err| err.to_string())
+}
+
 #[derive(Default)]
 struct AppState {
     expanded: Arc<AtomicBool>,
@@ -358,6 +367,7 @@ pub fn run() {
             set_tray_tooltip,
             get_autostart,
             set_autostart,
+            open_azan_credit,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

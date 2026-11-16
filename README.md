@@ -9,14 +9,16 @@ Widget waktu solat Malaysia (**JAKIM e-Solat**) untuk taskbar Windows 11 yang di
 - **Pengesanan Lokasi Automatik & Manual**: Mengesan lokasi semasa peranti secara automatik dan memadankannya dengan zon JAKIM e-Solat, serta menyokong pilihan zon secara manual di seluruh Malaysia.
 - **Notifikasi Custom Berinspirasikan Islam**:
   - Tetingkap notifikasi khas mengikut suasana waktu solat dengan rekaan bingkai emas, siluet masjid, dan kaligrafi Arab.
-  - Pilihan bunyi notifikasi termasuk **Azan** (dengan audio azan khas untuk **Subuh** dan azan biasa untuk waktu lain).
+  - Empat nada terbina dalam (**Takbir**, **Chime**, **Hijaz**, dan **Beep**) serta pilihan **Sunyi**.
+  - Tujuh pilihan azan (**Azan Bayati**, **Azan Hijaz**, **Azan Jiharkah**, **Azan Nahawand**, **Azan Rast**, **Azan Sikah**, dan **Azan Soba**). Setiap pilihan menggunakan rakaman Subuh untuk waktu Subuh dan rakaman biasa untuk waktu lain.
+  - Tetapan **Azan** daripada versi terdahulu dipadankan kepada **Azan Bayati**.
   - Tutup automatik **3 saat** selepas bunyi notifikasi tamat, dan berhenti serta-merta apabila pengguna menutup notifikasi.
   - Sokongan peringatan awal (*reminder*) dan *snooze* 5 minit.
 - **Auto-Mula Windows**: Pilihan untuk menjalankan aplikasi secara automatik apabila Windows dimulakan, lengkap dengan ikon *system tray*.
 
 ## Pemasangan (Pengguna Windows)
 
-1. Muat turun pemasang terkini (`W-Solat_2.0.0_x64-setup.exe`) daripada halaman **[Releases](https://github.com/ameer-yusoff/w-solat/releases/latest)**.
+1. Muat turun pemasang Windows terkini daripada halaman **[Releases](https://github.com/ameer-yusoff/w-solat/releases/latest)**.
 2. Jalankan fail pemasang tersebut dan ikut arahan di skrin.
 3. Widget akan muncul di taskbar dan mengesan zon waktu solat anda secara automatik.
 
@@ -50,7 +52,7 @@ npm run release
 ```text
 w-solat/
 ├── public/
-│   ├── audio/          # Fail audio azan & azan Subuh
+│   ├── audio/          # Tujuh pasangan MP3 azan biasa dan Subuh
 │   └── fonts/          # Fon Amiri Arabic (Regular & Bold)
 ├── src/
 │   ├── data/           # Data zon waktu solat Malaysia (JAKIM)
@@ -71,6 +73,12 @@ w-solat/
 ## Sumber Data
 
 Data waktu solat diperoleh daripada API rasmi **e-Solat JAKIM** bagi semua zon di Malaysia.
+
+## Kredit Audio
+
+Rakaman azan oleh **Ustaz Husaini Mahmur**, daripada album [Azan 7 Tarannum di YouTube Music](https://music.youtube.com/playlist?list=OLAK5uy_ldnXdmREHvQ-lQ8eZf4FLtRfSgk4L7mso). Album diterbitkan oleh Inteam Records.
+
+Pakej aplikasi menggunakan 14 fail MP3 dalam `public/audio/`. Untuk setiap tarannum, gunakan nama `azan-<tarannum>.mp3` bagi rakaman biasa dan `azan-<tarannum>-subuh.mp3` bagi rakaman Subuh. Contohnya, `azan-bayati.mp3` dan `azan-bayati-subuh.mp3`.
 
 ## Lesen
 

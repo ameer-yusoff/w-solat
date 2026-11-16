@@ -30,7 +30,9 @@ function merge(base, extra) {
 
 function load() {
   try {
-    return merge(structuredClone(DEFAULTS), JSON.parse(localStorage.getItem(KEY) || 'null'));
+    const saved = merge(structuredClone(DEFAULTS), JSON.parse(localStorage.getItem(KEY) || 'null'));
+    if (saved.notif?.sound === 'azan') saved.notif.sound = 'azan-bayati';
+    return saved;
   } catch {
     return structuredClone(DEFAULTS);
   }

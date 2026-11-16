@@ -2,15 +2,17 @@
 // Enjin bunyi: menyokong audio Azan sebenar (.mp3) serta
 // Web Audio synthesizer, dengan hentian segera & callback tamat.
 // ==========================================================
+const azanSounds = ['Bayati', 'Hijaz', 'Jiharkah', 'Nahawand', 'Rast', 'Sikah', 'Soba']
+  .map((name) => ({ value: `azan-${name.toLowerCase()}`, label: `Azan ${name}`, icon: 'music' }));
+
 export const SOUNDS = [
-  { value: 'azan',     label: 'Azan Penuh (Subuh Khas)', icon: 'music' },
-  { value: 'takbir',   label: 'Melodi Bayati (Takbir)',  icon: 'music' },
-  { value: 'chime',    label: 'Chime Harmoni',           icon: 'bell' },
-  { value: 'hijaz',    label: 'Lantunan Hijaz',          icon: 'music' },
-  { value: 'softbeep', label: 'Beep Lembut',             icon: 'volume' },
-  { value: 'silent',   label: 'Sunyi (Popup Sahaja)',    icon: 'mute' },
+  ...azanSounds,
+  { value: 'takbir',   label: 'Takbir', icon: 'music' },
+  { value: 'chime',    label: 'Chime',  icon: 'bell' },
+  { value: 'hijaz',    label: 'Hijaz',  icon: 'music' },
+  { value: 'softbeep', label: 'Beep',   icon: 'volume' },
+  { value: 'silent',   label: 'Sunyi',  icon: 'mute' },
 ];
-export const soundLabel = (v) => SOUNDS.find((s) => s.value === v)?.label || 'Chime Harmoni';
 
 export class SoundEngine {
   constructor() {
@@ -110,8 +112,9 @@ export class SoundEngine {
       return false;
     }
 
-    if (type === 'azan') {
-      const src = prayerKey === 'fajr' ? '/audio/azan-subuh.mp3' : '/audio/azan.mp3';
+    if (azanSounds.some(({ value }) => value === type)) {
+      const variant = prayerKey === 'fajr' ? '-subuh' : '';
+      const src = `/audio/${type}${variant}.mp3`;
       const el = new Audio(src);
       el.volume = Math.max(0, Math.min(1, volume));
       el.onended = () => {

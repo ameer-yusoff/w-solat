@@ -1,4 +1,5 @@
 <script>
+  import { invoke } from '@tauri-apps/api/core';
   import { ICON } from '../lib/icons.js';
   import { MAIN_PRAYERS } from '../lib/prayer.js';
   import { SOUNDS } from '../lib/sound.js';
@@ -60,6 +61,10 @@
     sound.stop();
     previewing = false;
     ontest?.($state.snapshot(temp));
+  }
+
+  function openAzanCredit() {
+    invoke('open_azan_credit').catch((err) => console.error('Gagal buka kredit azan:', err));
   }
 </script>
 
@@ -129,6 +134,9 @@
     <button class="secondary" onclick={test}><span class="bic">{@html ICON.play}</span> Uji</button>
     <button class="primary" onclick={save}><span class="bic">{@html ICON.save}</span> Simpan</button>
   </div>
+  <button class="credit" onclick={openAzanCredit}>
+    Rakaman azan oleh Ustaz Husaini Mahmur · YouTube Music
+  </button>
 </div>
 
 <style>
@@ -221,4 +229,5 @@
   }
   .bic { width: 12px; height: 12px; display: grid; }
   .bic :global(svg) { width: 100%; height: 100%; }
+  .credit { align-self: start; color: var(--ink-dim); font-size: 10px; text-align: left; text-decoration: underline; }
 </style>
