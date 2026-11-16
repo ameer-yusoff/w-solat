@@ -9,7 +9,7 @@ Widget waktu solat Malaysia (**JAKIM e-Solat**) untuk taskbar Windows 11 yang di
 - **Pengesanan Lokasi Automatik & Manual**: Mengesan lokasi semasa peranti secara automatik dan memadankannya dengan zon JAKIM e-Solat, serta menyokong pilihan zon secara manual di seluruh Malaysia.
 - **Notifikasi Custom Berinspirasikan Islam**:
   - Tetingkap notifikasi khas mengikut suasana waktu solat dengan rekaan bingkai emas, siluet masjid, dan kaligrafi Arab.
-  - Empat nada terbina dalam (**Takbir**, **Chime**, **Hijaz**, dan **Beep**) serta pilihan **Sunyi**.
+  - Empat nada terbina dalam (**Irama**, **Chime**, **Melodi**, dan **Beep**) serta pilihan **Sunyi**.
   - Tujuh pilihan azan (**Azan Bayati**, **Azan Hijaz**, **Azan Jiharkah**, **Azan Nahawand**, **Azan Rast**, **Azan Sikah**, dan **Azan Soba**). Setiap pilihan menggunakan rakaman Subuh untuk waktu Subuh dan rakaman biasa untuk waktu lain.
   - Tetapan **Azan** daripada versi terdahulu dipadankan kepada **Azan Bayati**.
   - Tutup automatik **3 saat** selepas bunyi notifikasi tamat, dan berhenti serta-merta apabila pengguna menutup notifikasi.
