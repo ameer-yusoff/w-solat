@@ -9,6 +9,7 @@
     MAIN_PRAYERS, timeToDate, fmtTime, fmtHijri, fmtCountdown,
   } from '../lib/prayer.js';
   import { detectDeviceZone } from '../lib/location.js';
+  import { ICON } from '../lib/icons.js';
   import { SoundEngine } from '../lib/sound.js';
   import MiniBar from './MiniBar.svelte';
   import Schedule from './Schedule.svelte';
@@ -19,6 +20,13 @@
   const sound = new SoundEngine();
   let expanded = $state(false);
   let view = $state('schedule');
+  let barAtTop = $state(false);
+  let editingPosition = $state(false);
+  let dragging = $state(false);
+  let savingPosition = $state(false);
+  let positionError = $state('');
+  let dragRequest = Promise.resolve();
+  let movePending = false;
 
   const next = $derived(getNext(runtime.entry, runtime.now, runtime.tomorrow));
   const prev = $derived(getPrev(runtime.entry, runtime.now));
@@ -129,7 +137,62 @@
     expanded = false;
     invoke('set_expanded', { expanded: false }).catch(() => {});
   }
-  const toggle = () => (expanded ? closePanel() : openPanel());
+  const toggle = () => {
+    if (!editingPosition) expanded ? closePanel() : openPanel();
+  };
+
+  async function editPosition() {
+    try {
+      await invoke('edit_widget_position');
+      editingPosition = true;
+      closePanel();
+    } catch (err) {
+      console.error('Gagal buka mod ubah kedudukan:', err);
+    }
+  }
+
+  function sendDrag(phase) {
+    dragRequest = dragRequest
+      .then(() => invoke('drag_widget', { phase }))
+      .catch((err) => console.error('Gagal alihkan widget:', err));
+    return dragRequest;
+  }
+
+  function startDrag(event) {
+    if (event.button !== 0 || dragging || savingPosition) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragging = true;
+    sendDrag('start');
+  }
+
+  function moveDrag() {
+    if (!dragging || movePending) return;
+    movePending = true;
+    sendDrag('move').finally(() => (movePending = false));
+  }
+
+  function endDrag(phase) {
+    if (!dragging) return;
+    dragging = false;
+    sendDrag(phase);
+  }
+
+  async function savePosition() {
+    if (dragging || savingPosition) return;
+    savingPosition = true;
+    positionError = '';
+    try {
+      await dragRequest;
+      await invoke('save_widget_position');
+      editingPosition = false;
+    } catch (err) {
+      positionError = 'Gagal simpan kedudukan';
+      console.error(positionError, err);
+    } finally {
+      savingPosition = false;
+    }
+  }
 
   function panelIn(node) {
     return {
@@ -148,6 +211,13 @@
   // ---------------- Kitaran hayat ----------------
   onMount(() => {
     const unlisten = [];
+    listen('widget-edge', ({ payload }) => (barAtTop = payload))
+      .then((u) => {
+        unlisten.push(u);
+        return invoke('widget_at_top');
+      })
+      .then((value) => (barAtTop = value))
+      .catch(() => {});
     listen('close-panel', () => expanded && closePanel()).then((u) => unlisten.push(u));
     listen('toggle-panel', () => toggle()).then((u) => unlisten.push(u));
     listen('refresh', () => refresh(true)).then((u) => unlisten.push(u));
@@ -199,7 +269,7 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="root period-{period}" onclick={(e) => e.target === e.currentTarget && expanded && closePanel()}>
+<div class="root period-{period}" class:barAtTop onclick={(e) => e.target === e.currentTarget && expanded && closePanel()}>
   {#if expanded}
     <section class="panel gold-frame" in:panelIn out:panelOut>
       <div class="panel-sky"></div>
@@ -207,7 +277,7 @@
       {#key view}
         <div class="view" in:viewIn>
           {#if view === 'schedule'}
-            <Schedule {next} {progress} {remaining} {hijri} onnav={(v) => (view = v)} />
+            <Schedule {next} {progress} {remaining} {hijri} onnav={(v) => (view = v)} onmove={editPosition} />
           {:else if view === 'location'}
             <LocationView
               onback={() => (view = 'schedule')}
@@ -223,7 +293,27 @@
     </section>
   {/if}
 
-  <MiniBar {next} {progress} {remaining} {period} {expanded} status={runtime.status} onclick={toggle} />
+  <div class="bar-wrap">
+    {#if editingPosition}
+      <button
+        class="move-control grip"
+        class:dragging
+        aria-label="Seret widget"
+        title="Klik dan seret untuk mengalihkan widget"
+        onpointerdown={startDrag}
+        onpointermove={moveDrag}
+        onpointerup={() => endDrag('end')}
+        onpointercancel={() => endDrag('cancel')}
+        onlostpointercapture={() => endDrag('cancel')}
+      >{@html ICON.grip}</button>
+    {/if}
+    <MiniBar {next} {progress} {remaining} {period} {expanded} status={runtime.status} onclick={toggle} />
+    {#if editingPosition}
+      <button class="move-control confirm" disabled={dragging || savingPosition} onclick={savePosition}
+        title={positionError || 'Simpan kedudukan widget'}
+        aria-label={positionError || 'Simpan kedudukan widget'}>{@html ICON.check}</button>
+    {/if}
+  </div>
 </div>
 
 <style>
@@ -232,6 +322,37 @@
     width: 100vw;
     height: 100vh;
   }
+
+  .bar-wrap {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    pointer-events: none;
+  }
+  .bar-wrap :global(button) { pointer-events: auto; }
+  .barAtTop .bar-wrap { bottom: auto; top: 4px; }
+  .move-control {
+    width: 30px;
+    height: 36px;
+    flex: none;
+    border: 1px solid var(--gold-line);
+    border-radius: 9px;
+    display: grid;
+    place-items: center;
+    background: var(--sky-1);
+    color: var(--gold-soft);
+  }
+  .move-control :global(svg) { width: 16px; height: 16px; pointer-events: none; }
+  .grip { cursor: grab; touch-action: none; }
+  .grip.dragging { cursor: grabbing; }
+  .confirm { background: var(--gold-soft); color: #1a1406; }
+  .confirm:disabled { opacity: 0.65; }
+  .barAtTop .panel { bottom: auto; top: 50px; transform-origin: 30% 0%; }
 
   .panel {
     position: absolute;

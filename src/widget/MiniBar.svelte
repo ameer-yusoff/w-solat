@@ -39,17 +39,14 @@
     <span class="ic">{@html ICON[period] ?? ICON.isyak}</span>
   </span>
 
-  <span class="txt">
-    <span class="name">{title}</span>
-    <span class="ticker">
-      <span class="track" style:transform="translateY({showCountdown ? -15 : 0}px)">
-        <span class="num">{next ? fmtTime(next.time, settings.format24) : '--:--'}</span>
-        <span class="num cd">−{fmtCountdown(remaining)}</span>
-      </span>
+  <span class="name">{title}</span>
+  <span class="ticker">
+    <span class="track" style:transform="translateY({showCountdown && next ? -15 : 0}px)">
+      <span class="num">{next ? fmtTime(next.time, settings.format24) : '--:--'}</span>
+      <span class="num cd">-{fmtCountdown(remaining)}</span>
     </span>
   </span>
-
-  {#if next}<span class="ar mini-ar">{next.ar}</span>{/if}
+  <span class="ar mini-ar">{next?.ar ?? ''}</span>
 
   {#if status === 'offline' || status === 'error'}
     <span class="offline" title="Data luar talian (cache)">{@html ICON.wifiOff}</span>
@@ -58,18 +55,16 @@
 
 <style>
   .mini {
-    position: absolute;
-    left: 0;
-    right: 0;
-    margin: 0 auto;
-    bottom: 4px;
-    width: 204px;
+    position: relative;
+    flex: none;
+    width: 246px;
     height: 40px;
     border-radius: 12px;
-    display: flex;
+    display: grid;
+    grid-template-columns: 31px 66px 62px 43px 12px;
     align-items: center;
-    gap: 8px;
-    padding: 0 10px 0 5px;
+    column-gap: 6px;
+    padding: 0 4px;
     overflow: hidden;
     background:
       linear-gradient(105deg, color-mix(in srgb, var(--sky-2) 85%, transparent), color-mix(in srgb, var(--sky-1) 92%, transparent) 70%),
@@ -113,7 +108,7 @@
     display: grid;
     place-items: center;
   }
-  .ring svg { position: absolute; inset: 0; transform: rotate(-90deg); }
+  .ring > svg { position: absolute; inset: 0; transform: rotate(-90deg); }
   .ring circle { fill: none; stroke-width: 2.2; }
   .ring .track { stroke: rgba(255, 255, 255, 0.1); }
   .ring .bar {
@@ -125,9 +120,9 @@
   .ic { width: 15px; height: 15px; color: var(--accent); display: grid; }
   .ic :global(svg) { width: 100%; height: 100%; }
 
-  .txt { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-  .name { font-family: var(--font-display); font-weight: 650; font-size: 13px; letter-spacing: 0.2px; white-space: nowrap; }
-  .mini-ar { position: relative; flex: none; font-size: 17px; line-height: 1; color: var(--gold); opacity: 0.92; padding: 0 2px; display: flex; align-items: center; }
+  .name, .ticker, .mini-ar { position: relative; text-align: center; white-space: nowrap; }
+  .name { font-family: var(--font-display); font-weight: 650; font-size: 12.5px; }
+  .mini-ar { font-size: 17px; line-height: 1.3; color: var(--gold); opacity: 0.92; }
   .ticker { height: 15px; overflow: hidden; display: block; }
   .ticker .track { display: flex; flex-direction: column; transition: transform 0.5s var(--ease); }
   .ticker .num { height: 15px; line-height: 15px; font-size: 11.5px; color: var(--ink-dim); }

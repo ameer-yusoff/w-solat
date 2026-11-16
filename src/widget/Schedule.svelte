@@ -3,7 +3,7 @@
   import { PRAYERS, fmtTime, fmtCountdown, fmtGregorian, timeToDate } from '../lib/prayer.js';
   import { settings, saveSettings, runtime } from '../lib/store.svelte.js';
 
-  let { next, progress = 0, remaining = 0, hijri = '', onnav } = $props();
+  let { next, progress = 0, remaining = 0, hijri = '', onnav, onmove } = $props();
 
   const rows = $derived(
     runtime.entry
@@ -28,6 +28,7 @@
     <span class="loc-name">{settings.locationName}</span>
     <span class="ic chev">{@html ICON.chevron}</span>
   </button>
+  <button class="icon-btn" onclick={onmove} title="Ubah kedudukan widget" aria-label="Ubah kedudukan widget">{@html ICON.grip}</button>
   <button class="icon-btn" class:off={!settings.notif.enabled} onclick={(e) => nav(e, 'notif')} title="Tetapan notifikasi">
     {@html settings.notif.enabled ? ICON.bell : ICON.bellOff}
   </button>

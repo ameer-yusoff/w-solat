@@ -7,10 +7,10 @@ const azanSounds = ['Bayati', 'Hijaz', 'Jiharkah', 'Nahawand', 'Rast', 'Sikah', 
 
 export const SOUNDS = [
   ...azanSounds,
-  { value: 'takbir',   label: 'Takbir', icon: 'music' },
+  { value: 'takbir',   label: 'Irama',  icon: 'bell' },
   { value: 'chime',    label: 'Chime',  icon: 'bell' },
-  { value: 'hijaz',    label: 'Hijaz',  icon: 'music' },
-  { value: 'softbeep', label: 'Beep',   icon: 'volume' },
+  { value: 'hijaz',    label: 'Melodi', icon: 'bell' },
+  { value: 'softbeep', label: 'Beep',   icon: 'bell' },
   { value: 'silent',   label: 'Sunyi',  icon: 'mute' },
 ];
 

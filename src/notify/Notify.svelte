@@ -218,8 +218,9 @@
   .card {
     position: relative;
     width: 100%;
-    border-radius: 20px;
+    border-radius: 18px;
     overflow: hidden;
+    flex-shrink: 0;
     padding: 10px 14px 12px;
     background: var(--sky-1);
     box-shadow: 0 14px 34px -6px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(0, 0, 0, 0.45);

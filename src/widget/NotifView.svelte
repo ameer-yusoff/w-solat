@@ -88,7 +88,7 @@
       </button>
     </div>
 
-    <span class="lbl">Volum <b class="num">{Math.round(temp.volume * 100)}%</b></span>
+    <span class="lbl">Suara <b class="num">{Math.round(temp.volume * 100)}%</b></span>
     <input
       class="range"
       type="range"
@@ -135,7 +135,8 @@
     <button class="primary" onclick={save}><span class="bic">{@html ICON.save}</span> Simpan</button>
   </div>
   <button class="credit" onclick={openAzanCredit}>
-    Rakaman azan oleh Ustaz Husaini Mahmur · YouTube Music
+    <span>Rakaman azan oleh <strong>Ustaz Husaini Mahmur</strong></span>
+    <span class="credit-source">YouTube Music</span>
   </button>
 </div>
 
@@ -229,5 +230,19 @@
   }
   .bic { width: 12px; height: 12px; display: grid; }
   .bic :global(svg) { width: 100%; height: 100%; }
-  .credit { align-self: start; color: var(--ink-dim); font-size: 10px; text-align: left; text-decoration: underline; }
+  .credit {
+    display: grid;
+    gap: 3px;
+    place-items: center;
+    margin-top: 5px;
+    padding: 7px 8px 2px;
+    border-top: 1px solid var(--gold-line);
+    color: var(--ink-dim);
+    font-size: 10px;
+    line-height: 1.4;
+    text-align: center;
+  }
+  .credit strong { color: var(--gold-soft); font-weight: 600; }
+  .credit-source { color: var(--gold); text-decoration: underline; text-underline-offset: 2px; }
+  .credit:hover .credit-source { color: var(--gold-soft); }
 </style>
