@@ -1,0 +1,32 @@
+name: Build W-Solat v2.1.0 Windows installer
+on:
+  push:
+    branches: [build/v2.1.0-windows-installer]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run release
+      - name: Verify the application and installer
+        shell: pwsh
+        run: |
+          if ((Get-Item src-tauri/target/release/w-solat.exe).VersionInfo.ProductVersion -ne '2.1.0') {
+            throw 'Unexpected W-Solat version'
+          }
+          $audio = @(Get-ChildItem dist/audio -Filter '*.mp3' -File)
+          if ($audio.Count -ne 14) { throw 'Expected all 14 azan recordings' }
+          Get-FileHash src-tauri/target/release/bundle/nsis/W-Solat_2.1.0_x64-setup.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: W-Solat_2.1.0_x64-setup
+          path: src-tauri/target/release/bundle/nsis/W-Solat_2.1.0_x64-setup.exe
+          if-no-files-found: error
