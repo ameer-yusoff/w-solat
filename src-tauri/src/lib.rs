@@ -154,7 +154,8 @@ fn show_notification(
         .ok_or_else(|| "Tetingkap notifikasi tidak dijumpai".to_string())?;
 
     win32::configure_overlay_style(&notify, true);
-    win32::position_notify(&notify, &payload.position);
+    let main = app.get_webview_window("main");
+    win32::position_notify(&notify, main.as_ref(), &payload.position);
     win32::show_inactive(&notify);
     let _ = notify.emit("prayer-alert", &payload);
 
@@ -187,6 +188,28 @@ fn set_expanded(app: AppHandle, state: State<'_, AppState>, expanded: bool) {
             let _ = main.set_focus();
         }
     }
+}
+
+#[tauri::command]
+fn widget_at_top() -> bool {
+    win32::widget_at_top()
+}
+
+#[tauri::command]
+fn edit_widget_position() {
+    win32::edit_widget_position();
+}
+
+#[tauri::command]
+fn drag_widget(window: tauri::WebviewWindow, phase: &str) {
+    if window.label() == "main" {
+        win32::drag_widget(&window, phase);
+    }
+}
+
+#[tauri::command]
+fn save_widget_position() -> Result<(), String> {
+    win32::save_widget_position()
 }
 
 #[tauri::command]
@@ -368,9 +391,14 @@ pub fn run() {
             get_autostart,
             set_autostart,
             open_azan_credit,
+            widget_at_top,
+            edit_widget_position,
+            drag_widget,
+            save_widget_position,
         ])
         .setup(|app| {
             let handle = app.handle().clone();
+            win32::restore_widget_position();
 
             if let Some(main) = app.get_webview_window("main") {
                 win32::configure_overlay_style(&main, true);

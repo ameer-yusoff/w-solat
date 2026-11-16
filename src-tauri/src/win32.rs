@@ -1,5 +1,8 @@
 use std::ffi::c_void;
-use tauri::WebviewWindow;
+use std::sync::Mutex;
+use tauri::{Emitter, WebviewWindow};
+use winreg::enums::HKEY_CURRENT_USER;
+use winreg::RegKey;
 use windows::core::PCWSTR;
 use windows::Win32::Foundation::{
     CloseHandle, GetLastError, ERROR_ALREADY_EXISTS, HANDLE, HWND, POINT, RECT,
@@ -12,16 +15,16 @@ use windows::Win32::System::Threading::CreateMutexW;
 use windows::Win32::UI::WindowsAndMessaging::{
     GetClassNameW, GetCursorPos, GetForegroundWindow, GetWindowLongW, GetWindowRect,
     SetWindowLongW, SetWindowPos, ShowWindow, GWL_EXSTYLE, HWND_TOPMOST, SWP_FRAMECHANGED,
-    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SW_HIDE, SW_SHOWNOACTIVATE,
+    SWP_ASYNCWINDOWPOS, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SW_HIDE, SW_SHOWNOACTIVATE,
     WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
 };
 
-pub const WIDGET_WIDTH: f64 = 256.0;
+pub const WIDGET_WIDTH: f64 = 320.0;
 pub const WIDGET_HEIGHT: f64 = 476.0;
-pub const MINI_WIDTH: f64 = 212.0;
+pub const MINI_WIDTH: f64 = 246.0;
 pub const MINI_HEIGHT: f64 = 48.0;
 pub const NOTIFY_WIDTH: f64 = 400.0;
-pub const NOTIFY_HEIGHT: f64 = 176.0;
+pub const NOTIFY_HEIGHT: f64 = 216.0;
 
 /// Pengawal satu instance menggunakan Windows named mutex.
 pub struct SingleInstanceGuard(HANDLE);
@@ -70,61 +73,131 @@ fn primary_monitor_rects() -> Option<(RECT, RECT)> {
     }
 }
 
-pub fn widget_bounds_physical(scale: f64) -> Option<(i32, i32, i32, i32)> {
-    let (mon, _) = primary_monitor_rects()?;
-    let scale = if scale > 0.0 { scale } else { 1.0 };
+const POSITION_KEY: &str = r"Software\W-Solat";
+const POSITION_VALUE: &str = "WidgetPosition";
 
-    // Bersebelahan widget cuaca Windows 11 di sebelah kiri taskbar
-    let logical_x = (155.0 / scale).round() + 90.0;
-    let x = mon.left + (logical_x * scale).round() as i32;
-    let w = (WIDGET_WIDTH * scale).round() as i32;
-    let h = (WIDGET_HEIGHT * scale).round() as i32;
-    let y = mon.bottom - h;
-
-    Some((x, y, w, h))
+#[derive(Default)]
+struct WidgetPlacement {
+    // Position of the mini bar relative to the primary display, in logical pixels.
+    anchor: Option<(i32, i32)>,
+    editing: bool,
+    drag_offset: Option<(i32, i32)>,
+    bar_at_top: bool,
 }
 
-pub fn position_widget(window: &WebviewWindow) {
-    let Some(hwnd) = to_hwnd(window) else { return };
+static PLACEMENT: Mutex<WidgetPlacement> = Mutex::new(WidgetPlacement {
+    anchor: None,
+    editing: false,
+    drag_offset: None,
+    bar_at_top: false,
+});
+
+pub fn restore_widget_position() {
+    let saved = RegKey::predef(HKEY_CURRENT_USER)
+        .open_subkey(POSITION_KEY)
+        .and_then(|key| key.get_value::<String, _>(POSITION_VALUE))
+        .ok()
+        .and_then(|value| serde_json::from_str(&value).ok());
+    PLACEMENT.lock().unwrap().anchor = saved;
+}
+
+fn widget_geometry(
+    window: &WebviewWindow,
+    placement: &WidgetPlacement,
+) -> Option<(RECT, f64, i32, i32, i32, i32, i32)> {
+    let (mon, _) = primary_monitor_rects()?;
     let scale = window.scale_factor().unwrap_or(1.0);
-    let Some((x, y, w, h)) = widget_bounds_physical(scale) else { return };
+    let w = (WIDGET_WIDTH * scale).round() as i32;
+    let h = (WIDGET_HEIGHT * scale).round() as i32;
+    let mini_h = (MINI_HEIGHT * scale).round() as i32;
+    let (x, bar_y) = placement.anchor.map_or_else(
+        || (mon.left + 155 + (58.0 * scale).round() as i32,
+            mon.bottom - mini_h),
+        |(x, y)| (mon.left + (f64::from(x) * scale).round() as i32,
+                   mon.top + (f64::from(y) * scale).round() as i32),
+    );
+    let x = x.clamp(mon.left, (mon.right - w).max(mon.left));
+    let bar_y = bar_y.clamp(mon.top, (mon.bottom - mini_h).max(mon.top));
+    Some((mon, scale, x, bar_y, w, h, mini_h))
+}
+
+fn apply_widget_position(window: &WebviewWindow, placement: &mut WidgetPlacement) {
+    let Some(hwnd) = to_hwnd(window) else { return };
+    let Some((mon, _, x, bar_y, w, h, mini_h)) = widget_geometry(window, placement) else { return };
+    let above = bar_y - mon.top;
+    let below = mon.bottom - bar_y - mini_h;
+    let at_top = above < h - mini_h && below > above;
+    let y = if at_top { bar_y } else { bar_y + mini_h - h };
 
     unsafe {
         let mut rect = RECT::default();
-        let needs_move = if GetWindowRect(hwnd, &mut rect).is_ok() {
-            rect.left != x
-                || rect.top != y
-                || (rect.right - rect.left) != w
-                || (rect.bottom - rect.top) != h
-        } else {
-            true
-        };
-
-        if needs_move {
-            let _ = SetWindowPos(
-                hwnd,
-                HWND_TOPMOST,
-                x,
-                y,
-                w,
-                h,
-                SWP_NOACTIVATE,
-            );
-        } else {
-            let _ = SetWindowPos(
-                hwnd,
-                HWND_TOPMOST,
-                0,
-                0,
-                0,
-                0,
-                SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE,
-            );
+        let unchanged = GetWindowRect(hwnd, &mut rect).is_ok()
+            && rect.left == x && rect.top == y
+            && rect.right - rect.left == w && rect.bottom - rect.top == h;
+        let mut flags = SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS;
+        if unchanged {
+            flags |= SWP_NOMOVE | SWP_NOSIZE;
         }
+        let _ = SetWindowPos(hwnd, HWND_TOPMOST, x, y, w, h, flags);
+    }
+    if placement.bar_at_top != at_top {
+        placement.bar_at_top = at_top;
+        let _ = window.emit("widget-edge", at_top);
     }
 }
 
-pub fn position_notify(window: &WebviewWindow, position_mode: &str) {
+pub fn position_widget(window: &WebviewWindow) {
+    apply_widget_position(window, &mut PLACEMENT.lock().unwrap());
+}
+
+pub fn widget_at_top() -> bool {
+    PLACEMENT.lock().unwrap().bar_at_top
+}
+
+pub fn edit_widget_position() {
+    PLACEMENT.lock().unwrap().editing = true;
+}
+
+pub fn drag_widget(window: &WebviewWindow, phase: &str) {
+    let mut placement = PLACEMENT.lock().unwrap();
+    if !placement.editing { return; }
+    if phase == "cancel" {
+        placement.drag_offset = None;
+        return;
+    }
+    let Some((mon, scale, x, bar_y, w, _, mini_h)) = widget_geometry(window, &placement) else { return };
+    let mut cursor = POINT::default();
+    if unsafe { GetCursorPos(&mut cursor) }.is_err() { return; }
+    match phase {
+        "start" => placement.drag_offset = Some((cursor.x - x, cursor.y - bar_y)),
+        "move" | "end" => {
+            let Some((dx, dy)) = placement.drag_offset else { return };
+            let x = (cursor.x - dx).clamp(mon.left, (mon.right - w).max(mon.left));
+            let y = (cursor.y - dy).clamp(mon.top, (mon.bottom - mini_h).max(mon.top));
+            placement.anchor = Some((((x - mon.left) as f64 / scale).round() as i32,
+                                     ((y - mon.top) as f64 / scale).round() as i32));
+            if phase == "end" { placement.drag_offset = None; }
+            apply_widget_position(window, &mut placement);
+        }
+        _ => {}
+    }
+}
+
+pub fn save_widget_position() -> Result<(), String> {
+    let mut placement = PLACEMENT.lock().unwrap();
+    if let Some(anchor) = placement.anchor {
+        let (key, _) = RegKey::predef(HKEY_CURRENT_USER)
+            .create_subkey(POSITION_KEY)
+            .map_err(|err| err.to_string())?;
+        let value = serde_json::to_string(&anchor).map_err(|err| err.to_string())?;
+        key.set_value(POSITION_VALUE, &value).map_err(|err| err.to_string())?;
+    }
+    placement.drag_offset = None;
+    placement.editing = false;
+    Ok(())
+}
+
+pub fn position_notify(window: &WebviewWindow, widget: Option<&WebviewWindow>, position_mode: &str) {
     let Some(hwnd) = to_hwnd(window) else { return };
     let Some((mon, work)) = primary_monitor_rects() else { return };
     let scale = window.scale_factor().unwrap_or(1.0);
@@ -143,10 +216,18 @@ pub fn position_notify(window: &WebviewWindow, position_mode: &str) {
         let margin_b = (10.0 * scale).round() as i32;
         (work.right - nw - margin_r, anchor_bottom - nh - margin_b)
     } else {
-        let wx = widget_bounds_physical(scale).map(|b| b.0).unwrap_or(work.left + 16);
-        let margin_b = (8.0 * scale).round() as i32;
-        let x = (wx - (4.0 * scale).round() as i32).max(work.left + 8);
-        (x, anchor_bottom - nh - margin_b)
+        let placement = PLACEMENT.lock().unwrap();
+        let margin = (8.0 * scale).round() as i32;
+        let Some((_, _, wx, bar_y, _, _, mini_h)) = widget
+            .and_then(|widget| widget_geometry(widget, &placement))
+        else { return };
+        let x = wx.clamp(work.left, (work.right - nw).max(work.left));
+        let y = if bar_y - nh - margin >= work.top {
+            bar_y - nh - margin
+        } else {
+            (bar_y + mini_h + margin).min(work.bottom - nh).max(work.top)
+        };
+        (x, y)
     };
 
     unsafe {
@@ -205,8 +286,11 @@ pub fn hide_window(window: &WebviewWindow) {
 pub fn is_cursor_over_minibar(window: &WebviewWindow) -> bool {
     let Some(hwnd) = to_hwnd(window) else { return false };
     let scale = window.scale_factor().unwrap_or(1.0);
-    let pad_x = (((WIDGET_WIDTH - MINI_WIDTH) / 2.0) * scale).round() as i32;
-    let mini_w = (MINI_WIDTH * scale).round() as i32;
+    let placement = PLACEMENT.lock().unwrap();
+    if placement.drag_offset.is_some() { return true; }
+    let width = if placement.editing { WIDGET_WIDTH } else { MINI_WIDTH };
+    let pad_x = (((WIDGET_WIDTH - width) / 2.0) * scale).round() as i32;
+    let mini_w = (width * scale).round() as i32;
     let mini_h = (MINI_HEIGHT * scale).round() as i32;
 
     unsafe {
@@ -215,10 +299,10 @@ pub fn is_cursor_over_minibar(window: &WebviewWindow) -> bool {
         if GetCursorPos(&mut pt).is_err() || GetWindowRect(hwnd, &mut rect).is_err() {
             return false;
         }
+        let bar_y = if placement.bar_at_top { rect.top } else { rect.bottom - mini_h };
         pt.x >= rect.left + pad_x
             && pt.x <= rect.left + pad_x + mini_w
-            && pt.y >= rect.bottom - mini_h
-            && pt.y <= rect.bottom
+            && pt.y >= bar_y && pt.y <= bar_y + mini_h
     }
 }
 
