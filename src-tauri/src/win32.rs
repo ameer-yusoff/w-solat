@@ -23,6 +23,10 @@ pub const WIDGET_WIDTH: f64 = 320.0;
 pub const WIDGET_HEIGHT: f64 = 476.0;
 pub const MINI_WIDTH: f64 = 246.0;
 pub const MINI_HEIGHT: f64 = 48.0;
+pub const MINI_MIN_WIDTH: f64 = 240.0;
+pub const MINI_MAX_WIDTH: f64 = 320.0;
+pub const MINI_MIN_HEIGHT: f64 = 36.0;
+pub const MINI_MAX_HEIGHT: f64 = 56.0;
 pub const NOTIFY_WIDTH: f64 = 400.0;
 pub const NOTIFY_HEIGHT: f64 = 216.0;
 
@@ -83,6 +87,8 @@ struct WidgetPlacement {
     editing: bool,
     drag_offset: Option<(i32, i32)>,
     bar_at_top: bool,
+    mini_width: f64,
+    mini_height: f64,
 }
 
 static PLACEMENT: Mutex<WidgetPlacement> = Mutex::new(WidgetPlacement {
@@ -90,7 +96,21 @@ static PLACEMENT: Mutex<WidgetPlacement> = Mutex::new(WidgetPlacement {
     editing: false,
     drag_offset: None,
     bar_at_top: false,
+    mini_width: MINI_WIDTH,
+    mini_height: 40.0,
 });
+
+fn effective_dims(placement: &WidgetPlacement) -> (f64, f64, f64) {
+    let mini_w = placement.mini_width.clamp(MINI_MIN_WIDTH, MINI_MAX_WIDTH);
+    let mini_bar_h = placement.mini_height.clamp(MINI_MIN_HEIGHT, MINI_MAX_HEIGHT);
+    let mini_h = mini_bar_h + 8.0;
+    let win_w = if placement.editing {
+        WIDGET_WIDTH.max(mini_w + 84.0)
+    } else {
+        WIDGET_WIDTH
+    };
+    (win_w, mini_w, mini_h)
+}
 
 pub fn restore_widget_position() {
     let saved = RegKey::predef(HKEY_CURRENT_USER)
@@ -107,9 +127,10 @@ fn widget_geometry(
 ) -> Option<(RECT, f64, i32, i32, i32, i32, i32)> {
     let (mon, _) = primary_monitor_rects()?;
     let scale = window.scale_factor().unwrap_or(1.0);
-    let w = (WIDGET_WIDTH * scale).round() as i32;
+    let (win_w, _, mini_h_logical) = effective_dims(placement);
+    let w = (win_w * scale).round() as i32;
     let h = (WIDGET_HEIGHT * scale).round() as i32;
-    let mini_h = (MINI_HEIGHT * scale).round() as i32;
+    let mini_h = (mini_h_logical * scale).round() as i32;
     let (x, bar_y) = placement.anchor.map_or_else(
         || (mon.left + 155 + (58.0 * scale).round() as i32,
             mon.bottom - mini_h),
@@ -154,8 +175,17 @@ pub fn widget_at_top() -> bool {
     PLACEMENT.lock().unwrap().bar_at_top
 }
 
-pub fn edit_widget_position() {
-    PLACEMENT.lock().unwrap().editing = true;
+pub fn edit_widget_position(window: &WebviewWindow) {
+    let mut placement = PLACEMENT.lock().unwrap();
+    placement.editing = true;
+    apply_widget_position(window, &mut placement);
+}
+
+pub fn set_minibar_size(window: &WebviewWindow, width: f64, height: f64) {
+    let mut placement = PLACEMENT.lock().unwrap();
+    placement.mini_width = width.clamp(MINI_MIN_WIDTH, MINI_MAX_WIDTH);
+    placement.mini_height = height.clamp(MINI_MIN_HEIGHT, MINI_MAX_HEIGHT);
+    apply_widget_position(window, &mut placement);
 }
 
 pub fn drag_widget(window: &WebviewWindow, phase: &str) {
@@ -183,7 +213,7 @@ pub fn drag_widget(window: &WebviewWindow, phase: &str) {
     }
 }
 
-pub fn save_widget_position() -> Result<(), String> {
+pub fn save_widget_position(window: &WebviewWindow) -> Result<(), String> {
     let mut placement = PLACEMENT.lock().unwrap();
     if let Some(anchor) = placement.anchor {
         let (key, _) = RegKey::predef(HKEY_CURRENT_USER)
@@ -194,6 +224,7 @@ pub fn save_widget_position() -> Result<(), String> {
     }
     placement.drag_offset = None;
     placement.editing = false;
+    apply_widget_position(window, &mut placement);
     Ok(())
 }
 
@@ -287,11 +318,13 @@ pub fn is_cursor_over_minibar(window: &WebviewWindow) -> bool {
     let Some(hwnd) = to_hwnd(window) else { return false };
     let scale = window.scale_factor().unwrap_or(1.0);
     let placement = PLACEMENT.lock().unwrap();
-    if placement.drag_offset.is_some() { return true; }
-    let width = if placement.editing { WIDGET_WIDTH } else { MINI_WIDTH };
-    let pad_x = (((WIDGET_WIDTH - width) / 2.0) * scale).round() as i32;
-    let mini_w = (width * scale).round() as i32;
-    let mini_h = (MINI_HEIGHT * scale).round() as i32;
+    if placement.editing || placement.drag_offset.is_some() {
+        return true;
+    }
+    let (win_w, mini_w_logical, mini_h_logical) = effective_dims(&placement);
+    let pad_x = (((win_w - mini_w_logical) / 2.0) * scale).round() as i32;
+    let mini_w = (mini_w_logical * scale).round() as i32;
+    let mini_h = (mini_h_logical * scale).round() as i32;
 
     unsafe {
         let mut pt = POINT::default();

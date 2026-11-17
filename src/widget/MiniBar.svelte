@@ -3,7 +3,18 @@
   import { fmtTime, fmtCountdown } from '../lib/prayer.js';
   import { settings } from '../lib/store.svelte.js';
 
-  let { next, progress = 0, remaining = 0, period, expanded = false, status = 'loading', onclick } = $props();
+  let {
+    next,
+    progress = 0,
+    remaining = 0,
+    period,
+    expanded = false,
+    editing = false,
+    status = 'loading',
+    width = 246,
+    height = 40,
+    onclick,
+  } = $props();
 
   const C = 2 * Math.PI * 15.5;
   const urgent = $derived(next && remaining > 0 && remaining <= 10 * 60000);
@@ -20,7 +31,16 @@
   );
 </script>
 
-<button class="mini gold-frame" class:expanded class:urgent {onclick} title="W-Solat — klik untuk jadual">
+<button
+  class="mini gold-frame"
+  class:expanded
+  class:editing
+  class:urgent
+  style:--bar-w="{width}px"
+  style:--bar-h="{height}px"
+  {onclick}
+  title="W-Solat — klik untuk jadual"
+>
   <span class="glow"></span>
   <span class="pattern"></span>
 
@@ -41,7 +61,7 @@
 
   <span class="name">{title}</span>
   <span class="ticker">
-    <span class="track" style:transform="translateY({showCountdown && next ? -15 : 0}px)">
+    <span class="track" style:transform="translateY({showCountdown && next ? '-50%' : '0'})">
       <span class="num">{next ? fmtTime(next.time, settings.format24) : '--:--'}</span>
       <span class="num cd">-{fmtCountdown(remaining)}</span>
     </span>
@@ -55,16 +75,20 @@
 
 <style>
   .mini {
+    --bar-w: 246px;
+    --bar-h: 40px;
+    --ring-s: calc(var(--bar-h) * 0.775);
+    --ticker-h: clamp(14px, calc(var(--bar-h) * 0.375), 18px);
     position: relative;
     flex: none;
-    width: 246px;
-    height: 40px;
+    width: var(--bar-w);
+    height: var(--bar-h);
     border-radius: 12px;
     display: grid;
-    grid-template-columns: 31px 66px 62px 43px 12px;
+    grid-template-columns: var(--ring-s) minmax(58px, 1.25fr) minmax(56px, 1.15fr) minmax(40px, 0.9fr) auto;
     align-items: center;
-    column-gap: 6px;
-    padding: 0 4px;
+    column-gap: clamp(6px, 2.5%, 12px);
+    padding: 0 10px;
     overflow: hidden;
     background:
       linear-gradient(105deg, color-mix(in srgb, var(--sky-2) 85%, transparent), color-mix(in srgb, var(--sky-1) 92%, transparent) 70%),
@@ -73,10 +97,12 @@
     transition: transform 0.25s var(--spring), box-shadow 0.25s ease, background 1.2s ease;
     text-align: left;
   }
+  .mini.editing { transition: box-shadow 0.25s ease, background 1.2s ease; }
   .mini:hover {
     transform: translateY(-1px);
     box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(233, 200, 115, 0.12);
   }
+  .mini.editing:hover, .mini.editing:active { transform: none; }
   .mini:active { transform: scale(0.97); transition-duration: 0.08s; }
   .mini.expanded { box-shadow: 0 0 0 1px rgba(233, 200, 115, 0.25), 0 6px 18px rgba(0, 0, 0, 0.55); }
 
@@ -103,8 +129,8 @@
   .ring {
     position: relative;
     flex: none;
-    width: 31px;
-    height: 31px;
+    width: var(--ring-s);
+    height: var(--ring-s);
     display: grid;
     place-items: center;
   }
@@ -117,15 +143,15 @@
     transition: stroke-dashoffset 1s linear;
     filter: drop-shadow(0 0 2px rgba(233, 200, 115, 0.6));
   }
-  .ic { width: 15px; height: 15px; color: var(--accent); display: grid; }
+  .ic { width: calc(var(--ring-s) * 0.48); height: calc(var(--ring-s) * 0.48); color: var(--accent); display: grid; }
   .ic :global(svg) { width: 100%; height: 100%; }
 
   .name, .ticker, .mini-ar { position: relative; text-align: center; white-space: nowrap; }
-  .name { font-family: var(--font-display); font-weight: 650; font-size: 12.5px; }
-  .mini-ar { font-size: 17px; line-height: 1.3; color: var(--gold); opacity: 0.92; }
-  .ticker { height: 15px; overflow: hidden; display: block; }
+  .name { font-family: var(--font-display); font-weight: 650; font-size: clamp(11.5px, calc(var(--bar-h) * 0.31), 15px); }
+  .mini-ar { font-size: clamp(15px, calc(var(--bar-h) * 0.425), 21px); line-height: 1.3; color: var(--gold); opacity: 0.92; }
+  .ticker { height: var(--ticker-h); overflow: hidden; display: block; }
   .ticker .track { display: flex; flex-direction: column; transition: transform 0.5s var(--ease); }
-  .ticker .num { height: 15px; line-height: 15px; font-size: 11.5px; color: var(--ink-dim); }
+  .ticker .num { height: var(--ticker-h); line-height: var(--ticker-h); font-size: clamp(10.5px, calc(var(--bar-h) * 0.285), 14px); color: var(--ink-dim); }
   .ticker .cd { color: var(--gold-soft); }
 
   .offline { position: relative; width: 12px; height: 12px; color: #f59e0b; display: grid; }

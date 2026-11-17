@@ -196,8 +196,17 @@ fn widget_at_top() -> bool {
 }
 
 #[tauri::command]
-fn edit_widget_position() {
-    win32::edit_widget_position();
+fn edit_widget_position(window: tauri::WebviewWindow) {
+    if window.label() == "main" {
+        win32::edit_widget_position(&window);
+    }
+}
+
+#[tauri::command]
+fn set_minibar_size(window: tauri::WebviewWindow, width: f64, height: f64) {
+    if window.label() == "main" {
+        win32::set_minibar_size(&window, width, height);
+    }
 }
 
 #[tauri::command]
@@ -208,8 +217,8 @@ fn drag_widget(window: tauri::WebviewWindow, phase: &str) {
 }
 
 #[tauri::command]
-fn save_widget_position() -> Result<(), String> {
-    win32::save_widget_position()
+fn save_widget_position(window: tauri::WebviewWindow) -> Result<(), String> {
+    win32::save_widget_position(&window)
 }
 
 #[tauri::command]
@@ -393,6 +402,7 @@ pub fn run() {
             open_azan_credit,
             widget_at_top,
             edit_widget_position,
+            set_minibar_size,
             drag_widget,
             save_widget_position,
         ])

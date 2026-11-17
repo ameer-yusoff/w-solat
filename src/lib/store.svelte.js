@@ -6,6 +6,8 @@ export const DEFAULTS = {
   locationName: 'Kuala Lumpur, Putrajaya',
   format24: false,
   autostart: true,
+  miniWidth: 246,
+  miniHeight: 40,
   notif: {
     enabled: true,
     sound: 'takbir',

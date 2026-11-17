@@ -23,10 +23,20 @@
   let barAtTop = $state(false);
   let editingPosition = $state(false);
   let dragging = $state(false);
+  let resizing = $state(false);
   let savingPosition = $state(false);
   let positionError = $state('');
+  let tutorialStep = $state(0); // 0 = tiada, 1 = grab, 2 = confirm
+  let tutorialTimers = [];
   let dragRequest = Promise.resolve();
   let movePending = false;
+  let resizeStart = null;
+  let sizeSyncTimer = null;
+
+  const MINI_MIN_W = 240;
+  const MINI_MAX_W = 320;
+  const MINI_MIN_H = 36;
+  const MINI_MAX_H = 56;
 
   const next = $derived(getNext(runtime.entry, runtime.now, runtime.tomorrow));
   const prev = $derived(getPrev(runtime.entry, runtime.now));
@@ -141,11 +151,30 @@
     if (!editingPosition) expanded ? closePanel() : openPanel();
   };
 
+  function clearTutorialTimers() {
+    tutorialTimers.forEach((t) => clearTimeout(t));
+    tutorialTimers = [];
+  }
+
+  function startTutorial() {
+    clearTutorialTimers();
+    tutorialStep = 1;
+    tutorialTimers.push(
+      setTimeout(() => {
+        if (editingPosition) tutorialStep = 2;
+      }, 3000),
+      setTimeout(() => {
+        tutorialStep = 0;
+      }, 6000),
+    );
+  }
+
   async function editPosition() {
     try {
       await invoke('edit_widget_position');
       editingPosition = true;
       closePanel();
+      startTutorial();
     } catch (err) {
       console.error('Gagal buka mod ubah kedudukan:', err);
     }
@@ -178,12 +207,64 @@
     sendDrag(phase);
   }
 
+  function syncMiniBarSize() {
+    clearTimeout(sizeSyncTimer);
+    sizeSyncTimer = setTimeout(() => {
+      invoke('set_minibar_size', {
+        width: settings.miniWidth,
+        height: settings.miniHeight,
+      }).catch(() => {});
+    }, 16);
+  }
+
+  function startResize(axis, event) {
+    if (event.button !== 0 || dragging || savingPosition) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    resizing = true;
+    resizeStart = {
+      axis,
+      x: event.clientX,
+      y: event.clientY,
+      w: settings.miniWidth,
+      h: settings.miniHeight,
+    };
+  }
+
+  function moveResize(event) {
+    if (!resizing || !resizeStart) return;
+    const dx = event.clientX - resizeStart.x;
+    const dy = event.clientY - resizeStart.y;
+    if (resizeStart.axis.includes('w')) {
+      settings.miniWidth = Math.round(Math.min(MINI_MAX_W, Math.max(MINI_MIN_W, resizeStart.w + dx * 2)));
+    }
+    if (resizeStart.axis.includes('h')) {
+      const deltaY = barAtTop ? dy : -dy;
+      settings.miniHeight = Math.round(Math.min(MINI_MAX_H, Math.max(MINI_MIN_H, resizeStart.h + deltaY)));
+    }
+    syncMiniBarSize();
+  }
+
+  function endResize() {
+    if (!resizing) return;
+    resizing = false;
+    resizeStart = null;
+    invoke('set_minibar_size', {
+      width: settings.miniWidth,
+      height: settings.miniHeight,
+    }).catch(() => {});
+  }
+
   async function savePosition() {
-    if (dragging || savingPosition) return;
+    if (dragging || resizing || savingPosition) return;
     savingPosition = true;
     positionError = '';
+    clearTutorialTimers();
+    tutorialStep = 0;
     try {
       await dragRequest;
+      saveSettings();
       await invoke('save_widget_position');
       editingPosition = false;
     } catch (err) {
@@ -222,6 +303,10 @@
     listen('toggle-panel', () => toggle()).then((u) => unlisten.push(u));
     listen('refresh', () => refresh(true)).then((u) => unlisten.push(u));
     listen('test-notif', () => testNotification()).then((u) => unlisten.push(u));
+    invoke('set_minibar_size', {
+      width: settings.miniWidth,
+      height: settings.miniHeight,
+    }).catch(() => {});
 
     (async () => {
       try {
@@ -262,6 +347,8 @@
 
     return () => {
       clearInterval(timer);
+      clearTutorialTimers();
+      clearTimeout(sizeSyncTimer);
       unlisten.forEach((u) => u());
     };
   });
@@ -269,7 +356,12 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="root period-{period}" class:barAtTop onclick={(e) => e.target === e.currentTarget && expanded && closePanel()}>
+<div
+  class="root period-{period}"
+  class:barAtTop
+  style:--bar-offset="{settings.miniHeight + 10}px"
+  onclick={(e) => e.target === e.currentTarget && expanded && closePanel()}
+>
   {#if expanded}
     <section class="panel gold-frame" in:panelIn out:panelOut>
       <div class="panel-sky"></div>
@@ -295,23 +387,81 @@
 
   <div class="bar-wrap">
     {#if editingPosition}
-      <button
-        class="move-control grip"
-        class:dragging
-        aria-label="Seret widget"
-        title="Klik dan seret untuk mengalihkan widget"
-        onpointerdown={startDrag}
-        onpointermove={moveDrag}
-        onpointerup={() => endDrag('end')}
-        onpointercancel={() => endDrag('cancel')}
-        onlostpointercapture={() => endDrag('cancel')}
-      >{@html ICON.grip}</button>
+      <div class="control-slot grip-slot">
+        {#if tutorialStep === 1}
+          <div class="tutorial-bubble left" role="status">
+            <span>Seret di sini untuk ubah posisi</span>
+          </div>
+        {/if}
+        <button
+          class="move-control grip"
+          class:dragging
+          aria-label="Seret widget"
+          title="Klik dan seret untuk mengalihkan widget"
+          onpointerdown={startDrag}
+          onpointermove={moveDrag}
+          onpointerup={() => endDrag('end')}
+          onpointercancel={() => endDrag('cancel')}
+          onlostpointercapture={() => endDrag('cancel')}
+        >{@html ICON.grip}</button>
+      </div>
     {/if}
-    <MiniBar {next} {progress} {remaining} {period} {expanded} status={runtime.status} onclick={toggle} />
+
+    <div class="mini-stage" class:editing={editingPosition}>
+      {#if editingPosition && resizing}
+        <div class="size-badge">{settings.miniWidth} × {settings.miniHeight}</div>
+      {/if}
+      <MiniBar
+        {next}
+        {progress}
+        {remaining}
+        {period}
+        {expanded}
+        editing={editingPosition}
+        status={runtime.status}
+        width={settings.miniWidth}
+        height={settings.miniHeight}
+        onclick={toggle}
+      />
+      {#if editingPosition}
+        <div
+          class="resize-handle resize-y"
+          title="Seret untuk ubah tinggi"
+          onpointerdown={(e) => startResize('h', e)}
+          onpointermove={moveResize}
+          onpointerup={endResize}
+          onpointercancel={endResize}
+        ></div>
+        <div
+          class="resize-handle resize-w"
+          title="Seret untuk ubah lebar"
+          onpointerdown={(e) => startResize('w', e)}
+          onpointermove={moveResize}
+          onpointerup={endResize}
+          onpointercancel={endResize}
+        ></div>
+        <div
+          class="resize-handle resize-wh"
+          title="Seret untuk ubah lebar & tinggi"
+          onpointerdown={(e) => startResize('wh', e)}
+          onpointermove={moveResize}
+          onpointerup={endResize}
+          onpointercancel={endResize}
+        ></div>
+      {/if}
+    </div>
+
     {#if editingPosition}
-      <button class="move-control confirm" disabled={dragging || savingPosition} onclick={savePosition}
-        title={positionError || 'Simpan kedudukan widget'}
-        aria-label={positionError || 'Simpan kedudukan widget'}>{@html ICON.check}</button>
+      <div class="control-slot confirm-slot">
+        {#if tutorialStep === 2}
+          <div class="tutorial-bubble right" role="status">
+            <span>Klik sini untuk sahkan</span>
+          </div>
+        {/if}
+        <button class="move-control confirm" disabled={dragging || resizing || savingPosition} onclick={savePosition}
+          title={positionError || 'Simpan kedudukan & saiz widget'}
+          aria-label={positionError || 'Simpan kedudukan & saiz widget'}>{@html ICON.check}</button>
+      </div>
     {/if}
   </div>
 </div>
@@ -336,6 +486,8 @@
   }
   .bar-wrap :global(button) { pointer-events: auto; }
   .barAtTop .bar-wrap { bottom: auto; top: 4px; }
+  .control-slot { position: relative; flex: none; pointer-events: none; }
+  .control-slot button { pointer-events: auto; }
   .move-control {
     width: 30px;
     height: 36px;
@@ -352,14 +504,132 @@
   .grip.dragging { cursor: grabbing; }
   .confirm { background: var(--gold-soft); color: #1a1406; }
   .confirm:disabled { opacity: 0.65; }
-  .barAtTop .panel { bottom: auto; top: 50px; transform-origin: 30% 0%; }
+
+  .tutorial-bubble {
+    position: absolute;
+    bottom: calc(100% + 9px);
+    padding: 6px 10px;
+    border-radius: 9px;
+    background: rgba(12, 16, 24, 0.96);
+    border: 1px solid var(--gold-line);
+    color: var(--ink);
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.25;
+    white-space: nowrap;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.55);
+    pointer-events: none;
+    z-index: 20;
+    animation: bubbleIn 0.22s var(--spring);
+  }
+  .tutorial-bubble.left { left: 0; }
+  .tutorial-bubble.right { right: 0; }
+  .tutorial-bubble::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    width: 8px;
+    height: 8px;
+    background: rgba(12, 16, 24, 0.96);
+    border-right: 1px solid var(--gold-line);
+    border-bottom: 1px solid var(--gold-line);
+    transform: translateY(-4px) rotate(45deg);
+  }
+  .tutorial-bubble.left::after { left: 11px; }
+  .tutorial-bubble.right::after { right: 11px; }
+
+  .barAtTop .tutorial-bubble {
+    bottom: auto;
+    top: calc(100% + 9px);
+  }
+  .barAtTop .tutorial-bubble::after {
+    top: auto;
+    bottom: 100%;
+    border-right: none;
+    border-bottom: none;
+    border-left: 1px solid var(--gold-line);
+    border-top: 1px solid var(--gold-line);
+    transform: translateY(4px) rotate(45deg);
+  }
+
+  @keyframes bubbleIn {
+    from { opacity: 0; transform: translateY(4px) scale(0.95); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  .mini-stage {
+    position: relative;
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
+  .mini-stage.editing {
+    outline: 1px dashed rgba(233, 200, 115, 0.55);
+    outline-offset: 2px;
+    border-radius: 13px;
+  }
+  .size-badge {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 3px 8px;
+    border-radius: 6px;
+    background: rgba(12, 16, 24, 0.92);
+    border: 1px solid var(--gold-line);
+    color: var(--gold-soft);
+    font-size: 10.5px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  .barAtTop .size-badge { bottom: auto; top: calc(100% + 8px); }
+
+  .resize-handle {
+    position: absolute;
+    pointer-events: auto;
+    touch-action: none;
+    z-index: 5;
+  }
+  .resize-w {
+    top: 4px;
+    bottom: 4px;
+    right: -4px;
+    width: 8px;
+    cursor: ew-resize;
+  }
+  .resize-y {
+    left: 8px;
+    right: 8px;
+    top: -4px;
+    height: 8px;
+    cursor: ns-resize;
+  }
+  .barAtTop .resize-y { top: auto; bottom: -4px; }
+  .resize-wh {
+    right: -5px;
+    top: -5px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--gold-soft);
+    border: 1.5px solid #1a1406;
+    cursor: nesw-resize;
+  }
+  .barAtTop .resize-wh { top: auto; bottom: -5px; cursor: nwse-resize; }
+
+  .barAtTop .panel { bottom: auto; top: var(--bar-offset, 50px); transform-origin: 30% 0%; }
 
   .panel {
     position: absolute;
-    left: 2px;
-    right: 2px;
-    bottom: 50px;
-    max-height: calc(100vh - 54px);
+    left: 0;
+    right: 0;
+    width: 316px;
+    margin: 0 auto;
+    bottom: var(--bar-offset, 50px);
+    max-height: calc(100vh - var(--bar-offset, 50px) - 4px);
     border-radius: 18px;
     overflow: hidden;
     transform-origin: 30% 100%;
