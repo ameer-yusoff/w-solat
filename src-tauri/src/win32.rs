@@ -22,7 +22,6 @@ use windows::Win32::UI::WindowsAndMessaging::{
 pub const WIDGET_WIDTH: f64 = 320.0;
 pub const WIDGET_HEIGHT: f64 = 476.0;
 pub const MINI_WIDTH: f64 = 246.0;
-pub const MINI_HEIGHT: f64 = 48.0;
 pub const MINI_MIN_WIDTH: f64 = 240.0;
 pub const MINI_MAX_WIDTH: f64 = 320.0;
 pub const MINI_MIN_HEIGHT: f64 = 36.0;
@@ -142,9 +141,9 @@ fn widget_geometry(
     Some((mon, scale, x, bar_y, w, h, mini_h))
 }
 
-fn apply_widget_position(window: &WebviewWindow, placement: &mut WidgetPlacement) {
-    let Some(hwnd) = to_hwnd(window) else { return };
-    let Some((mon, _, x, bar_y, w, h, mini_h)) = widget_geometry(window, placement) else { return };
+fn apply_widget_position(window: &WebviewWindow, placement: &mut WidgetPlacement) -> Option<bool> {
+    let hwnd = to_hwnd(window)?;
+    let (mon, _, x, bar_y, w, h, mini_h) = widget_geometry(window, placement)?;
     let above = bar_y - mon.top;
     let below = mon.bottom - bar_y - mini_h;
     let at_top = above < h - mini_h && below > above;
@@ -152,23 +151,48 @@ fn apply_widget_position(window: &WebviewWindow, placement: &mut WidgetPlacement
 
     unsafe {
         let mut rect = RECT::default();
-        let unchanged = GetWindowRect(hwnd, &mut rect).is_ok()
-            && rect.left == x && rect.top == y
-            && rect.right - rect.left == w && rect.bottom - rect.top == h;
-        let mut flags = SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS;
-        if unchanged {
-            flags |= SWP_NOMOVE | SWP_NOSIZE;
+        let has_rect = GetWindowRect(hwnd, &mut rect).is_ok();
+        let pos_unchanged = has_rect && rect.left == x && rect.top == y;
+        let size_unchanged = has_rect && (rect.right - rect.left) == w && (rect.bottom - rect.top) == h;
+
+        if !(placement.editing && pos_unchanged && size_unchanged) {
+            let mut flags = SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS;
+            if pos_unchanged {
+                flags |= SWP_NOMOVE;
+            }
+            if size_unchanged {
+                flags |= SWP_NOSIZE;
+            }
+            if placement.editing {
+                flags |= SWP_NOZORDER;
+            }
+            let _ = SetWindowPos(hwnd, HWND_TOPMOST, x, y, w, h, flags);
         }
-        let _ = SetWindowPos(hwnd, HWND_TOPMOST, x, y, w, h, flags);
     }
     if placement.bar_at_top != at_top {
         placement.bar_at_top = at_top;
+        Some(at_top)
+    } else {
+        None
+    }
+}
+
+fn emit_edge_if_changed(window: &WebviewWindow, changed: Option<bool>) {
+    if let Some(at_top) = changed {
         let _ = window.emit("widget-edge", at_top);
     }
 }
 
+pub fn is_editing() -> bool {
+    PLACEMENT.lock().unwrap().editing
+}
+
 pub fn position_widget(window: &WebviewWindow) {
-    apply_widget_position(window, &mut PLACEMENT.lock().unwrap());
+    let changed = {
+        let mut placement = PLACEMENT.lock().unwrap();
+        apply_widget_position(window, &mut placement)
+    };
+    emit_edge_if_changed(window, changed);
 }
 
 pub fn widget_at_top() -> bool {
@@ -176,55 +200,70 @@ pub fn widget_at_top() -> bool {
 }
 
 pub fn edit_widget_position(window: &WebviewWindow) {
-    let mut placement = PLACEMENT.lock().unwrap();
-    placement.editing = true;
-    apply_widget_position(window, &mut placement);
+    let changed = {
+        let mut placement = PLACEMENT.lock().unwrap();
+        placement.editing = true;
+        apply_widget_position(window, &mut placement)
+    };
+    emit_edge_if_changed(window, changed);
 }
 
 pub fn set_minibar_size(window: &WebviewWindow, width: f64, height: f64) {
-    let mut placement = PLACEMENT.lock().unwrap();
-    placement.mini_width = width.clamp(MINI_MIN_WIDTH, MINI_MAX_WIDTH);
-    placement.mini_height = height.clamp(MINI_MIN_HEIGHT, MINI_MAX_HEIGHT);
-    apply_widget_position(window, &mut placement);
+    let changed = {
+        let mut placement = PLACEMENT.lock().unwrap();
+        placement.mini_width = width.clamp(MINI_MIN_WIDTH, MINI_MAX_WIDTH);
+        placement.mini_height = height.clamp(MINI_MIN_HEIGHT, MINI_MAX_HEIGHT);
+        apply_widget_position(window, &mut placement)
+    };
+    emit_edge_if_changed(window, changed);
 }
 
 pub fn drag_widget(window: &WebviewWindow, phase: &str) {
-    let mut placement = PLACEMENT.lock().unwrap();
-    if !placement.editing { return; }
-    if phase == "cancel" {
-        placement.drag_offset = None;
-        return;
-    }
-    let Some((mon, scale, x, bar_y, w, _, mini_h)) = widget_geometry(window, &placement) else { return };
-    let mut cursor = POINT::default();
-    if unsafe { GetCursorPos(&mut cursor) }.is_err() { return; }
-    match phase {
-        "start" => placement.drag_offset = Some((cursor.x - x, cursor.y - bar_y)),
-        "move" | "end" => {
-            let Some((dx, dy)) = placement.drag_offset else { return };
-            let x = (cursor.x - dx).clamp(mon.left, (mon.right - w).max(mon.left));
-            let y = (cursor.y - dy).clamp(mon.top, (mon.bottom - mini_h).max(mon.top));
-            placement.anchor = Some((((x - mon.left) as f64 / scale).round() as i32,
-                                     ((y - mon.top) as f64 / scale).round() as i32));
-            if phase == "end" { placement.drag_offset = None; }
-            apply_widget_position(window, &mut placement);
+    let changed = {
+        let mut placement = PLACEMENT.lock().unwrap();
+        if !placement.editing { return; }
+        if phase == "cancel" {
+            placement.drag_offset = None;
+            return;
         }
-        _ => {}
-    }
+        let Some((mon, scale, x, bar_y, w, _, mini_h)) = widget_geometry(window, &placement) else { return };
+        let mut cursor = POINT::default();
+        if unsafe { GetCursorPos(&mut cursor) }.is_err() { return; }
+        match phase {
+            "start" => {
+                placement.drag_offset = Some((cursor.x - x, cursor.y - bar_y));
+                None
+            }
+            "move" | "end" => {
+                let Some((dx, dy)) = placement.drag_offset else { return };
+                let x = (cursor.x - dx).clamp(mon.left, (mon.right - w).max(mon.left));
+                let y = (cursor.y - dy).clamp(mon.top, (mon.bottom - mini_h).max(mon.top));
+                placement.anchor = Some((((x - mon.left) as f64 / scale).round() as i32,
+                                         ((y - mon.top) as f64 / scale).round() as i32));
+                if phase == "end" { placement.drag_offset = None; }
+                apply_widget_position(window, &mut placement)
+            }
+            _ => None,
+        }
+    };
+    emit_edge_if_changed(window, changed);
 }
 
 pub fn save_widget_position(window: &WebviewWindow) -> Result<(), String> {
-    let mut placement = PLACEMENT.lock().unwrap();
-    if let Some(anchor) = placement.anchor {
-        let (key, _) = RegKey::predef(HKEY_CURRENT_USER)
-            .create_subkey(POSITION_KEY)
-            .map_err(|err| err.to_string())?;
-        let value = serde_json::to_string(&anchor).map_err(|err| err.to_string())?;
-        key.set_value(POSITION_VALUE, &value).map_err(|err| err.to_string())?;
-    }
-    placement.drag_offset = None;
-    placement.editing = false;
-    apply_widget_position(window, &mut placement);
+    let changed = {
+        let mut placement = PLACEMENT.lock().unwrap();
+        if let Some(anchor) = placement.anchor {
+            let (key, _) = RegKey::predef(HKEY_CURRENT_USER)
+                .create_subkey(POSITION_KEY)
+                .map_err(|err| err.to_string())?;
+            let value = serde_json::to_string(&anchor).map_err(|err| err.to_string())?;
+            key.set_value(POSITION_VALUE, &value).map_err(|err| err.to_string())?;
+        }
+        placement.drag_offset = None;
+        placement.editing = false;
+        apply_widget_position(window, &mut placement)
+    };
+    emit_edge_if_changed(window, changed);
     Ok(())
 }
 

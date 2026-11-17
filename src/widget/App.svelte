@@ -171,9 +171,9 @@
 
   async function editPosition() {
     try {
+      closePanel();
       await invoke('edit_widget_position');
       editingPosition = true;
-      closePanel();
       startTutorial();
     } catch (err) {
       console.error('Gagal buka mod ubah kedudukan:', err);
@@ -188,9 +188,11 @@
   }
 
   function startDrag(event) {
-    if (event.button !== 0 || dragging || savingPosition) return;
+    if (event.button !== 0 || dragging || resizing || savingPosition) return;
     event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {}
     dragging = true;
     sendDrag('start');
   }
@@ -198,12 +200,23 @@
   function moveDrag() {
     if (!dragging || movePending) return;
     movePending = true;
-    sendDrag('move').finally(() => (movePending = false));
+    requestAnimationFrame(() => {
+      if (!dragging) {
+        movePending = false;
+        return;
+      }
+      sendDrag('move').finally(() => (movePending = false));
+    });
   }
 
-  function endDrag(phase) {
+  function endDrag(phase, event) {
     if (!dragging) return;
     dragging = false;
+    try {
+      if (event?.currentTarget?.hasPointerCapture?.(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+    } catch {}
     sendDrag(phase);
   }
 
@@ -400,9 +413,9 @@
           title="Klik dan seret untuk mengalihkan widget"
           onpointerdown={startDrag}
           onpointermove={moveDrag}
-          onpointerup={() => endDrag('end')}
-          onpointercancel={() => endDrag('cancel')}
-          onlostpointercapture={() => endDrag('cancel')}
+          onpointerup={(e) => endDrag('end', e)}
+          onpointercancel={(e) => endDrag('cancel', e)}
+          onlostpointercapture={(e) => endDrag('cancel', e)}
         >{@html ICON.grip}</button>
       </div>
     {/if}

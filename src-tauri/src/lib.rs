@@ -330,7 +330,12 @@ fn spawn_win32_watchers(app: AppHandle) {
             !win32::is_cursor_over_minibar(&main)
         };
         if ignore_cursor.swap(want_ignore, Ordering::SeqCst) != want_ignore {
-            let _ = main.set_ignore_cursor_events(want_ignore);
+            let h = app_cursor.clone();
+            let _ = app_cursor.run_on_main_thread(move || {
+                if let Some(m) = h.get_webview_window("main") {
+                    let _ = m.set_ignore_cursor_events(want_ignore);
+                }
+            });
         }
     });
 
@@ -339,11 +344,17 @@ fn spawn_win32_watchers(app: AppHandle) {
         // Jujukan penyelarasan awal (atasi kelewatan Explorer semasa Windows startup)
         for ms in [300_u64, 1200, 2500, 5000] {
             std::thread::sleep(Duration::from_millis(ms));
-            if let Some(main) = app.get_webview_window("main") {
-                if main.is_visible().unwrap_or(false) {
-                    win32::position_widget(&main);
-                }
+            if win32::is_editing() {
+                continue;
             }
+            let h = app.clone();
+            let _ = app.run_on_main_thread(move || {
+                if let Some(main) = h.get_webview_window("main") {
+                    if main.is_visible().unwrap_or(false) {
+                        win32::position_widget(&main);
+                    }
+                }
+            });
         }
 
         let mut hidden_by_fs = false;
@@ -353,9 +364,6 @@ fn spawn_win32_watchers(app: AppHandle) {
             std::thread::sleep(Duration::from_millis(250));
             tick = tick.wrapping_add(1);
 
-            let Some(main) = app.get_webview_window("main") else {
-                continue;
-            };
             let own: Vec<_> = ["main", "notify"]
                 .iter()
                 .filter_map(|l| app.get_webview_window(l).and_then(|w| win32::to_hwnd(&w)))
@@ -367,14 +375,29 @@ fn spawn_win32_watchers(app: AppHandle) {
                 if expanded.load(Ordering::SeqCst) {
                     let _ = app.emit_to("main", "close-panel", ());
                 }
-                win32::hide_window(&main);
+                let h = app.clone();
+                let _ = app.run_on_main_thread(move || {
+                    if let Some(main) = h.get_webview_window("main") {
+                        win32::hide_window(&main);
+                    }
+                });
             } else if !fs && hidden_by_fs {
                 hidden_by_fs = false;
-                win32::position_widget(&main);
-                win32::show_inactive(&main);
-            } else if !fs && tick % 12 == 0 {
+                let h = app.clone();
+                let _ = app.run_on_main_thread(move || {
+                    if let Some(main) = h.get_webview_window("main") {
+                        win32::position_widget(&main);
+                        win32::show_inactive(&main);
+                    }
+                });
+            } else if !fs && tick % 12 == 0 && !win32::is_editing() {
                 // Failsafe setiap ~3s supaya kekal di atas taskbar
-                win32::position_widget(&main);
+                let h = app.clone();
+                let _ = app.run_on_main_thread(move || {
+                    if let Some(main) = h.get_webview_window("main") {
+                        win32::position_widget(&main);
+                    }
+                });
             }
         }
     });
